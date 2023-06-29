@@ -1,12 +1,8 @@
-import pygame
 import numpy as np
 
-from rails import Track
-from rails import Node
+from tracks import Track
+from nodes import Node
 from trains import Train
-
-TRACK_DARK = (255, 255, 255)
-TRACK_LIGHT = (25, 50, 77)
 
 
 class RailNetwork:
@@ -21,8 +17,7 @@ class RailNetwork:
     """
 
     def __init__(self):
-        self.genesis = Node("0000-0000", (0, 0))
-        self.nodes = [self.genesis]
+        self.nodes = []
         self.tracks = []
         self.ramps = []
         self.trains = []
@@ -58,7 +53,7 @@ class RailNetwork:
             from_node, to_node = track.getNodes()
             for old_track in self.tracks:
                 if old_track.isParallel(track):
-                    parallel_tracks = Track.createParallelTrack(
+                    parallel_tracks = self.createParallelTrack(
                         track, track.getMaxVelocity()
                     )
                     self.tracks.append(parallel_tracks[0])
@@ -82,7 +77,7 @@ class RailNetwork:
         from_node: Node,
         to_node: Node = None,
         to_coordinates: tuple = None,
-        max_velocity: int = 180,
+        max_velocity: int = 50,
     ):
         """
         Adds a Track to the graph. Can be given either a node or coordinates. If both are given the node is used.
@@ -100,11 +95,11 @@ class RailNetwork:
                 print("Please add either coordinates or a Node to connect the rail to!")
                 return
             to_node = self.addNodeFromCoordinates(to_coordinates)
-        new_track = Track(track_id, from_node, to_node, max_velocity)
+        new_track = Track(f"{track_id}C", from_node, to_node, max_velocity)
 
         for track in self.tracks:
             if track.isParallel(new_track):
-                new_track = Track.createParallelTrack(new_track, max_velocity)
+                new_track = self.createParallelTrack(new_track, max_velocity)
 
         if isinstance(new_track, list):
             self.addTrakk(new_track[0])
@@ -117,15 +112,15 @@ class RailNetwork:
         self,
         id: str,
         home_node: Node,
-        max_velocity: int = 180,
-        max_acceleration: int = 200,
+        max_velocity: int = 50,
+        max_acceleration: int = 1.3,
         number_wagons: int = 0,
         number_cars: int = 1,
     ):
         new_train = Train(
             id,
             home_node,
-            max_velocity=max_acceleration,
+            max_velocity=max_velocity,
             max_acceleration=max_acceleration,
             number_wagons=number_wagons,
             number_cars=number_cars,
@@ -133,35 +128,55 @@ class RailNetwork:
         self.trains.append(new_train)
         return new_train
 
-    def draw(
-        self,
-        surface: pygame.Surface,
-        map_position: tuple,
-        zoom: float,
-        dark_theme: bool = False,
-    ):
+    def createParallelTrack(self, track, max_velocity: int = 50, step_size=0):
         """
-        Draws the tracks on a surface using pygame
+        TODO:
+            * Once ramp nodes/switches are sorted out this function should only check the Tracks of track.getNodes()
+            * Step_size needs to be implemented
+        """
+        if not isinstance(track, Track):
+            return
+        found_free_track = False
+        to_right = True
+        i = 0
 
-        Args:
-            surface (pygame.Surface): The surface to draw on
-            map_position (tuple): The current position of the map
-            zoom (float): The zooming factor
-            dark_theme (bool): If the dark theme is supposed to be used. Defaults to False
-        """
-        if dark_theme:
-            track_color = TRACK_DARK
-        else:
-            track_color = TRACK_LIGHT
-        for track in self.tracks:
-            start, end = [track.getNodes()[i].getCoordinates() for i in range(2)]
-            relative_start = np.array(start) * zoom + np.array(map_position)
-            relative_end = np.array(end) * zoom + np.array(map_position)
-            pygame.draw.aaline(surface, track_color, relative_start, relative_end)
-        for ramp in self.ramps:
-            start, end = [ramp.getNodes()[i].getCoordinates() for i in range(2)]
-            relative_start = np.array(start) * zoom + np.array(map_position)
-            relative_end = np.array(end) * zoom + np.array(map_position)
-            pygame.draw.aaline(surface, track_color, relative_start, relative_end)
-        for train in self.trains:
-            train.draw(surface, map_position, zoom)
+        while not found_free_track:
+            if to_right:
+                suffix = "R"
+            else:
+                suffix = "L"
+
+            parallel_track_nodes = Track.getRampStructure(track, to_right=to_right)
+            new_track = Track(
+                f"{track.getID()}{suffix}",
+                parallel_track_nodes[1],
+                parallel_track_nodes[2],
+                max_velocity,
+            )
+            ramp_on = Track(
+                f"{track.getID()}R",
+                parallel_track_nodes[0],
+                parallel_track_nodes[1],
+                max_velocity,
+            )
+            ramp_off = Track(
+                f"{track.getID()}R",
+                parallel_track_nodes[2],
+                parallel_track_nodes[3],
+                max_velocity,
+            )
+            if i % 2 == 0 and i > 0:
+                step_size += 1
+                new_track, ramp_on, ramp_off = self.createParallelTrack(
+                    new_track, max_velocity, step_size=step_size
+                )
+            if any(
+                new_track.isParallel(other_track) for other_track in self.getTracks()
+            ):
+                to_right = not to_right
+                print(f"{track.getID()} is parallel")
+            else:
+                found_free_track = True
+            i += 1
+
+        return list([new_track, ramp_on, ramp_off])
