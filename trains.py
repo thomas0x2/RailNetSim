@@ -2,6 +2,7 @@ import numpy as np
 import pygame
 
 from nodes import Node
+from nodes import SimpleSwitch
 from tracks import Track
 from collections import deque
 
@@ -37,31 +38,29 @@ class Train:
     ):
         self.id = id
         self.home_node = home_node
+        self.track = None
         self.route = deque()
         self.route.append(home_node)
+        self.previous_node = home_node
 
         self.number_wagons = number_wagons
         self.number_cars = number_cars
 
-        self.position = home_node.getCoordinates()
+        self.position = home_node.coordinates
         self.max_velocity = max_velocity
         self.velocity = 0
         self.max_acceleration = max_acceleration
 
-    def getTrack(self) -> Track:
+    def getTrack(self, previous_node, current_node) -> Track:
         """
-        Collects the current track the train rides on
+        Returns the track the train is currently on
 
-        returns:
-            Track: The track the train currently rides on
-
+        Returns:
+            Track: The track the train is currently on
         """
-        if self.getHasArrived():
-            return
-        for track in self.route[0].getTracks():
-            if self.route[1] in track.getNodes():
-                return track
-        return
+        if len(self.route) > 1:
+            return current_node.getTrack(previous_node, next_node=self.route[1])
+        return None
 
     def getTrainDirection(self) -> np.ndarray:
         """
@@ -70,10 +69,10 @@ class Train:
         returns:
             np.ndarray: Direction of the train
         """
-        track = self.getTrack()
-        if track is not None:
-            return track.getDirection(self.route[1])
-        return self.route[0].getTracks()[0].getDirection(self.route[0].getAdjNodes()[0])
+        if len(self.route) > 1:
+            return self.route[0].getDirectionTo(self.route[1])
+        else:
+            return self.route[0].getDirectionTo(self.route[0].adj_nodes[0])
 
     def getTargetVelocity(self, target_velocity: int) -> int:
         """
@@ -85,23 +84,32 @@ class Train:
         Returns:
             int: The feasible target velocity
         """
+        if self.track is None:
+            return 0
         if target_velocity is None:
             return
         if target_velocity < 0:
             target_velocity = 0
-        target_velocity = min(target_velocity, self.max_velocity)
-        if not self.getTrack() is None:
-            target_velocity = min(target_velocity, self.getTrack().getMaxVelocity())
+        target_velocity = min(
+            target_velocity, self.max_velocity, self.track.max_velocity
+        )
         return target_velocity
 
-    def getRoute(self) -> deque:
-        return self.route
-
     def getRouteLogs(self) -> str:
-        string = f"{self.id} ROUTE # "
+        string = f"{self.id} Route # "
         for node in self.route:
-            string += f"{node.getID()} VIA "
+            string += f"{node.id} VIA "
         return string
+
+    def addRoute(self, nodes: list):
+        """
+        Adds a list of nodes to the trains route
+
+        Args:
+            nodes (list): List of nodes to add to the route
+        """
+        for node in nodes:
+            self.addNodeToRoute(node)
 
     def addNodeToRoute(self, node: Node):
         """
@@ -110,9 +118,11 @@ class Train:
         Args:
             node (Node): The node to add
         """
-        if node in self.route[-1].getAdjNodes():
+        if node in self.route[-1].adj_nodes:
             self.route.append(node)
             self.has_arrived = False
+            if len(self.route) == 2:
+                self.track = self.route[0].getTrackTo(self.route[1])
 
     def getHasArrived(self) -> bool:
         """
@@ -125,9 +135,6 @@ class Train:
             return True
         else:
             return False
-
-    def getTrainPosition(self) -> np.ndarray:
-        return self.position
 
     def accelerate(
         self,
@@ -142,6 +149,7 @@ class Train:
         Args:
             target_velocity (int): The maximum velocity the train is supposed to reach
             acceleration (float, optional): Sets how fast the train should accelerate. Defaults to self.max_acceleration
+            speed_coefficient (float, optional): A coefficient that can be used to slow down the acceleration. Defaults to 1.0
         """
         if acceleration is None:
             acceleration = self.max_acceleration
@@ -151,8 +159,8 @@ class Train:
             self.max_velocity,
             target_velocity,
         )
-        if self.getTrack() is not None:
-            new_velocity = min(new_velocity, self.getTrack().getMaxVelocity())
+        if self.track is not None:
+            new_velocity = min(new_velocity, self.track.max_velocity)
         self.velocity = new_velocity
 
     def decelerate(self, deceleration: float = None, speed_coefficient: float = 1.0):
@@ -162,37 +170,38 @@ class Train:
 
         Args:
             deceleration (float, optional): How fast the train should decelerate. Defaults to self.max_acceleration
+            speed_coefficient (float, optional): A coefficient that can be used to slow down the deceleration. Defaults to 1.0
         """
         if deceleration is None:
             deceleration = self.max_acceleration
         deceleration = min(max(deceleration, 0), self.max_acceleration)
         self.velocity = max(self.velocity - deceleration * speed_coefficient, 0)
 
-    def drive(self, target_velocity: int = 100, speed_coefficient: int = 1):
+    def drive(self, fps: int, target_velocity_in_ms: int = 100, global_speed: int = 1):
         """
         If the train has a Destination and a Track, this method will accelerate() or decelerate() the train. Until it reached its
         next Destination Node, it will move in the direction of getTrainDirection() according to its current velocity.
 
         Args:
+            fps (int): The current fps of the simulation
             target_velocity (int, optional): The target velocity the train should reach. Defaults to 100.
+            global_speed (int, optional): A coefficient that can be used to slow down the train. Defaults to 1.
         """
-        if self.getHasArrived():
-            return
-        if self.getTrack() is None:
+        if fps == 0 or self.getHasArrived():
             return
 
-        target_velocity = self.getTargetVelocity(target_velocity)
+        target_velocity = self.getTargetVelocity(target_velocity_in_ms)
         if self.velocity < target_velocity:
-            self.accelerate(target_velocity, speed_coefficient=speed_coefficient)
-        if self.velocity > target_velocity:
-            self.decelerate(target_velocity, speed_coefficient=speed_coefficient)
+            self.accelerate(target_velocity, speed_coefficient=global_speed / fps)
+        elif self.velocity > target_velocity:
+            self.decelerate(target_velocity, speed_coefficient=global_speed / fps)
 
-        delta_s = self.velocity * speed_coefficient
-        if self.reachedNode(delta_s):
-            self.route.popleft()
-            self.position = self.route[0].coordinates
+        delta_s = self.velocity * global_speed / fps
+
+        if self.reachedNode(delta_s, self.route[1]):
+            self.handleNodeReached()
         else:
-            self.position = self.position + self.getTrainDirection() * delta_s
+            self.moveTrain(delta_s)
 
     def getDistanceFromNode(self, node: Node) -> float:
         """
@@ -204,9 +213,9 @@ class Train:
         Returns:
             float: Distance between train position and Node.
         """
-        return np.linalg.norm(self.position - [node.getCoordinates()])
+        return np.linalg.norm(self.position - [node.coordinates])
 
-    def reachedNode(self, epsilon: float = 1.0) -> bool:
+    def reachedNode(self, epsilon: float = 1.0, node: Node = None) -> bool:
         """
         Checks if a train reached its Destination node
 
@@ -216,9 +225,31 @@ class Train:
         Returns:
             bool: True if the train reached its next destination
         """
-        if self.getDistanceFromNode(self.route[1]) < epsilon:
+        if node is None:
+            node = self.route[1]
+        if self.getDistanceFromNode(node) < epsilon:
             return True
         return False
+
+    def handleNodeReached(self):
+        self.previous_node = self.route.popleft()
+        current_node = self.route[0]
+        self.position = current_node.coordinates
+
+        if self.getHasArrived():
+            return
+
+        next_node = self.route[1]
+        if isinstance(current_node, SimpleSwitch):
+            if current_node.getNextNode(self.previous_node) != next_node:
+                self.track = None
+                self.velocity = 0
+                return
+
+        self.track = next_node.getTrackTo(self.route[1])
+
+    def moveTrain(self, delta_s: float):
+        self.position = self.position + self.getTrainDirection() * delta_s
 
 
 class LongDistanceTrain(Train):

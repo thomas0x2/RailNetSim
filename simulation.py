@@ -1,15 +1,14 @@
 import pygame
 import controls
+from controls import MapView
 from environment import Map
 from enum import Enum
-import time
+import numpy as np
+from trains import Train
 
 """
 Utility Methods
 """
-BACKGROUND_LIGHT = (242, 242, 242)
-BACKGROUND_DARK = (70, 70, 70)
-DARK_THEME = False
 
 
 def kmh_to_ms(kmh: float):
@@ -27,6 +26,10 @@ clock = pygame.time.Clock()
 
 
 class GlobalSpeed(Enum):
+    """
+    Defines the global speed. Slow makes everything run in real-time.
+    """
+
     SLOW = 1
     NORMAL = 5
     QUICK = 10
@@ -38,98 +41,91 @@ GLOBAL_SPEED = GlobalSpeed.NORMAL
 Environment
 """
 map = Map([2 * 7680, 2 * 4320])
-network = map.getRailNetwork(True)
-
+network = map.getRailNetwork(False)
 
 """
 Rails
 """
-central = network.nodes[0]
-c0001 = network.addNodeFromCoordinates((0, 310))
-c0002 = network.addNodeFromCoordinates((0, -40))
-c0012 = network.addNodeFromCoordinates((0, -240))
-c0003 = network.addNodeFromCoordinates((240, -240))
-network.addTrack("TR-C0001", central, c0001)
-network.addTrack("TR-C0001", central, c0001)
-network.addTrack("TR-C0001", central, c0001)
-network.addTrack("TR-C0001", central, c0001)
-network.addTrack("TR-C0002", central, c0002)
-network.addTrack("TR-C0012", central, c0012)
-network.addTrack("TR-C0003", c0002, c0003)
-for track in network.getTracks():
-    print(track)
-for node in network.getNodes():
+node_coordinates = [
+    [0, 0],
+    [0, 310],
+    [0, -40],
+    [0, -250],
+    [240, -160],
+    [0, -510],
+    [870, -160],
+    [0, 1120],
+]
+adjacency_matrix = [
+    [0, 4, 1, 0, 0, 0, 0, 0],
+    [4, 0, 0, 0, 0, 0, 0, 2],
+    [1, 0, 0, 1, 1, 0, 0, 0],
+    [0, 0, 1, 0, 1, 2, 0, 0],
+    [0, 0, 1, 1, 0, 0, 1, 0],
+    [0, 0, 0, 2, 0, 0, 0, 0],
+    [0, 0, 0, 0, 1, 0, 0, 0],
+    [0, 2, 0, 0, 0, 0, 0, 0],
+]
+max_velocities_in_kmh = np.array(
+    [100, 100, 80, 60, 80, 180, 200, 200, 200, 160, 320, 200, 160, 160]
+)
+max_velocities_in_ms = kmh_to_ms(max_velocities_in_kmh)
+network.initNodesAndTracks(node_coordinates, adjacency_matrix, max_velocities_in_ms)
+for node in network.nodes[0].adj_nodes:
     print(node)
-
 
 """
 Trains
 """
-train1 = network.addTrain("45003GH", central)
-train1.addNodeToRoute(c0001)
-train1.addNodeToRoute(central)
+train1 = Train("766RHZ", network.nodes[0])
+network.trains.append(train1)
+train1.addRoute([network.nodes[i] for i in [1, 7, 1, 0]])
 
-train2 = network.addTrain("766RHZ", central)
-train2.addNodeToRoute(c0002)
-train2.addNodeToRoute(c0003)
-
-
-"""
-Initial values
-"""
-if DARK_THEME:
-    background = BACKGROUND_DARK
-else:
-    background = BACKGROUND_LIGHT
-
+train2 = Train("K677D8", network.nodes[0])
+network.trains.append(train2)
+train2.addRoute([network.nodes[i] for i in [2, 4, 6, 4, 3, 5, 3, 2, 0]])
+print(train2.getRouteLogs())
+for node in network.nodes:
+    print(node)
 
 """
 Simulation
 """
 pygame.init()
 window = pygame.display.set_mode((1280, 720))
-view = map.getView()
-pygame.display.set_caption("Train Network Simulator")
+view = MapView(map)
+pygame.display.set_caption("Traffic Network Simulator")
+key_state = {}
 running = True
-start_time = time.time()
+
 while running:
     clock.tick(30)
-
-    key_state = controls.handle_events()
-    if key_state.get(pygame.K_LEFT):
-        view.position[0] += controls.pan_speed / view.zoom
-    if key_state.get(pygame.K_RIGHT):
-        view.position[0] -= controls.pan_speed / view.zoom
-    if key_state.get(pygame.K_UP):
-        view.position[1] += controls.pan_speed / view.zoom
-    if key_state.get(pygame.K_DOWN):
-        view.position[1] -= controls.pan_speed / view.zoom
-    if key_state.get(pygame.K_PLUS):
-        view.zoom = view.zoom + controls.zoom_speed
-    if key_state.get(pygame.K_MINUS):
-        view.zoom = view.zoom - controls.zoom_speed
-
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        if event.type == pygame.KEYDOWN:
+            key_state[event.key] = True
+        elif event.type == pygame.KEYUP:
+            key_state[event.key] = False
+
+    controls.handle_view_controls(view, key_state)
+    controls.handle_user_input(view)
 
     # Game logic
     view.clamp()
-    window.fill(background)
 
     # Map
     map.render(window, view)
 
     # Trains
     fps = clock.get_fps()
-    if fps > 0:
-        train1.drive(
-            target_velocity=kmh_to_ms(180), speed_coefficient=GLOBAL_SPEED.value / fps
-        )
-        train2.drive(
-            target_velocity=kmh_to_ms(100), speed_coefficient=GLOBAL_SPEED.value / fps
-        )
+    train1.drive(
+        fps, target_velocity_in_ms=kmh_to_ms(100), global_speed=GLOBAL_SPEED.value
+    )
+    train2.drive(
+        fps, target_velocity_in_ms=kmh_to_ms(200), global_speed=GLOBAL_SPEED.value
+    )
 
-    pygame.display.flip()
+    pygame.display.update()
 
 pygame.quit()
