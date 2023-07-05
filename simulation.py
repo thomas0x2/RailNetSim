@@ -1,10 +1,12 @@
 import pygame
-import controls
-from controls import MapView
-from environment import Map
+import pygame.font
+import controller.controls as controls
+from view.map_view import MapView
+from view.window_view import WindowView
+from model.environment import Map
 from enum import Enum
 import numpy as np
-from trains import Train
+from model.trains import Train
 
 """
 Utility Methods
@@ -36,7 +38,7 @@ class GlobalSpeed(Enum):
     FAST = 25
 
 
-GLOBAL_SPEED = GlobalSpeed.NORMAL
+GLOBAL_SPEED = GlobalSpeed.SLOW
 """
 Environment
 """
@@ -93,13 +95,14 @@ Simulation
 """
 pygame.init()
 window = pygame.display.set_mode((1280, 720))
-view = MapView(map)
+map_view = MapView(map)
+window_view = WindowView()
 pygame.display.set_caption("Traffic Network Simulator")
 key_state = {}
 running = True
 
 while running:
-    clock.tick(30)
+    clock.tick(60)
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -108,14 +111,15 @@ while running:
         elif event.type == pygame.KEYUP:
             key_state[event.key] = False
 
-    controls.handle_view_controls(view, key_state)
-    controls.handle_user_input(view)
+    controls.handle_view_controls(map_view, key_state)
+    controls.handle_mouse_input(map_view, window_view)
 
     # Game logic
-    view.clamp()
+    map_view.clamp()
 
     # Map
-    map.render(window, view)
+    map.render(window, map_view)
+    window_view.draw_windows(window)
 
     # Trains
     fps = clock.get_fps()

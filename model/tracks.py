@@ -1,5 +1,5 @@
 import numpy as np
-from nodes import Node
+from model.nodes import Node
 
 """
 TO-DO:

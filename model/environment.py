@@ -1,10 +1,10 @@
 from enum import Enum
 import pygame
-from network import RailNetwork
-from models import TrainModel
-from models import TrackModel
-from models import NodeModel
-from nodes import Node
+from model.network import RailNetwork
+from model.models import TrainModel
+from model.models import TrackModel
+from model.models import NodeModel
+from model.nodes import Node
 
 BACKGROUND_LIGHT = (242, 242, 242)
 BACKGROUND_DARK = (70, 70, 70)

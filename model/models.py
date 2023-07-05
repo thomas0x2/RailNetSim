@@ -1,9 +1,9 @@
 import pygame
-from nodes import Node
-from nodes import SimpleSwitch
-from tracks import Track
-from trains import Train
-import controls
+from model.nodes import Node
+from model.nodes import SimpleSwitch
+from model.tracks import Track
+from model.trains import Train
+import controller.controls as controls
 import numpy as np
 import math
 

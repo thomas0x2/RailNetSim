@@ -1,9 +1,9 @@
 import numpy as np
 
-from tracks import Track
-from nodes import Node
-from nodes import SimpleSwitch
-from trains import Train
+from model.tracks import Track
+from model.nodes import Node
+from model.nodes import SimpleSwitch
+from model.trains import Train
 from typing import Union
 
 

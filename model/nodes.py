@@ -1,5 +1,7 @@
 import numpy as np
 from enum import Enum
+from view.windows import Window
+import time
 
 
 class Node:
@@ -103,6 +105,9 @@ class SimpleSwitch(Node):
     def switch(self):
         self.switch_state = (self.switch_state + 1) % (len(self.adj_nodes) - 1)
 
+    def getDelay(self, global_speed: int):
+        return self.delay / global_speed
+
     def getNextNodeFromIndex(self, previous_node_index: int):
         if self.switch_state == 0:
             if 0 <= previous_node_index <= 1:
@@ -115,9 +120,22 @@ class SimpleSwitch(Node):
                 return self.adj_nodes[3 - previous_node_index]
         return None
 
-    def getNextNode(self, previous_node: Node):
+    def getNextNodeFrom(self, previous_node: Node):
         previous_node_index = self.getIndex(previous_node)
         return self.getNextNodeFromIndex(previous_node_index)
+
+    def getTrackFrom(self, previous_node: Node):
+        previous_node_index = self.getIndex(previous_node)
+        if self.switch_state == 0:
+            if 0 <= previous_node_index <= 1:
+                return self.tracks[1 - previous_node_index]
+        if self.switch_state == 1:
+            if previous_node_index == 0 or previous_node_index == 2:
+                return self.tracks[2 - previous_node_index]
+        if self.switch_state == 2:
+            if previous_node_index == 0 or previous_node_index == 3:
+                return self.tracks[3 - previous_node_index]
+        return None
 
 
 # Make Switches a collection of nodes

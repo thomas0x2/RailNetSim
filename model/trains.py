@@ -1,9 +1,9 @@
 import numpy as np
 import pygame
 
-from nodes import Node
-from nodes import SimpleSwitch
-from tracks import Track
+from model.nodes import Node
+from model.nodes import SimpleSwitch
+from model.tracks import Track
 from collections import deque
 
 clock = pygame.time.Clock()
@@ -51,7 +51,7 @@ class Train:
         self.velocity = 0
         self.max_acceleration = max_acceleration
 
-    def getTrack(self, previous_node, current_node) -> Track:
+    def getTrack(self, current_node) -> Track:
         """
         Returns the track the train is currently on
 
@@ -59,7 +59,7 @@ class Train:
             Track: The track the train is currently on
         """
         if len(self.route) > 1:
-            return current_node.getTrack(previous_node, next_node=self.route[1])
+            return current_node.getTrackTo(next_node=self.route[1])
         return None
 
     def getTrainDirection(self) -> np.ndarray:
@@ -98,7 +98,7 @@ class Train:
     def getRouteLogs(self) -> str:
         string = f"{self.id} Route # "
         for node in self.route:
-            string += f"{node.id} VIA "
+            string += f"# {node.id} \n "
         return string
 
     def addRoute(self, nodes: list):
@@ -197,10 +197,13 @@ class Train:
             self.decelerate(target_velocity, speed_coefficient=global_speed / fps)
 
         delta_s = self.velocity * global_speed / fps
-
-        if self.reachedNode(delta_s, self.route[1]):
+        if self.reachedNode(delta_s):
             self.handleNodeReached()
         else:
+            if isinstance(self.route[0], SimpleSwitch):
+                current_node = self.route[0]
+                if current_node.getNextNodeFrom(self.previous_node) == self.route[1]:
+                    self.track = self.route[0].getTrackTo(self.route[1])
             self.moveTrain(delta_s)
 
     def getDistanceFromNode(self, node: Node) -> float:
@@ -237,16 +240,19 @@ class Train:
         self.position = current_node.coordinates
 
         if self.getHasArrived():
+            print(self.getHasArrived())
             return
 
         next_node = self.route[1]
         if isinstance(current_node, SimpleSwitch):
-            if current_node.getNextNode(self.previous_node) != next_node:
+            if current_node.getNextNodeFrom(self.previous_node) != next_node:
                 self.track = None
                 self.velocity = 0
                 return
-
-        self.track = next_node.getTrackTo(self.route[1])
+            else:
+                self.track = current_node.getTrackFrom(self.previous_node)
+        else:
+            self.track = next_node.getTrackTo(next_node)
 
     def moveTrain(self, delta_s: float):
         self.position = self.position + self.getTrainDirection() * delta_s
