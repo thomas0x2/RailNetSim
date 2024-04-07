@@ -1,2 +1,2 @@
-# RWN Simulator
+# RailNet Simulator
 
